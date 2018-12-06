@@ -1,0 +1,493 @@
+
+
+/****** CHNAGE IN SQL INSTANCE MONITORING PROCEDURE ******/
+USE [DBA_DB]
+GO
+
+/****** Object:  StoredProcedure [dbo].[usp_SQLInstanceMonitoringReport]    Script Date: 05/10/2018 11:14:47 ******/
+DROP PROCEDURE [dbo].[usp_SQLInstanceMonitoringReport]
+GO
+
+/****** Object:  StoredProcedure [dbo].[usp_SQLInstanceMonitoringReport]    Script Date: 05/10/2018 11:14:47 ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+CREATE PROCEDURE [dbo].[usp_SQLInstanceMonitoringReport] 
+AS
+BEGIN
+
+	/****************************************************************************/
+		-- Stored Procedure Name: usp_SQLReport
+		-- Purpose: Generate SQL Monitoring Reports
+		-- Input Parameters: None
+		-- Output: HTML File
+		-- Created By: Milind Gijavanekar
+		-- Created Date: 20-Oct-2016
+		-- Modified By:SAURABH VERMA 
+		-- Modified Date:10/05/2018
+		-- NEW TABLE LOGIN STATUS INCLUDED TO VERIFY LOGIN SYNC BETWENN REPLICAS OF AVAILIBILITY GROUP 
+	/****************************************************************************/
+
+	SET NOCOUNT ON;
+
+	SELECT '<HTML><BODY style="font-family:verdana;">';
+
+	SELECT '<H3><U>SQL SERVER INSTANCE:</U> ' + @@SERVERNAME +'</H3>';
+	SELECT '<H3><U>REPORT DATE:</U> ' + CAST(GETDATE() AS VARCHAR) +'</H3>';
+
+	SELECT '<H4><U>FULL BACKUP REPORT</U></H4>';
+	SELECT '<TABLE border=1 cellpadding=3 cellspacing=0 style="font:8pt verdana;"><TR style="background-color:lightblue;"><TD><B>DatabaseName</B></TD><TD><B>Recovery</B></TD><TD><B>LastFullBackup</B></TD></TR>';
+	SELECT 
+		'<TR><TD>' + ISNULL(backupset.database_name,' ') + '</TD>' , 
+		'<TD>' + ISNULL(CAST(DATABASEPROPERTYEX(backupset.database_name, 'Recovery') AS VARCHAR),' ') + '</TD>' , 
+		 '<TD>',REPLACE(CAST(MAX(CASE WHEN backupset.type = 'D' THEN backupset.backup_finish_date ELSE '1900-01-01 00:00:00.000' END) AS VARCHAR),'Jan  1 1900 12:00AM','-'), 
+		 '</TD></TR>'
+			FROM msdb.dbo.backupset 
+	inner join master.dbo.sysdatabases on (backupset.database_name = sysdatabases.name)
+	and sysdatabases.name like 'CS0[1,2,5,6,8]%'
+	GROUP BY backupset.database_name
+	ORDER BY backupset.database_name DESC;
+	SELECT '</TABLE>';
+
+
+		SELECT '<H4><U>LOG BACKUP REPORT</U></H4>';
+	SELECT '<TABLE border=1 cellpadding=3 cellspacing=0 style="font:8pt verdana;"><TR style="background-color:lightblue;"><TD><B>DatabaseName</B></TD><TD><B>Recovery</B></TD><TD><B>LastLog</B></TD></TR>';
+	SELECT 
+		'<TR><TD>' + ISNULL(backupset.database_name,' ') + '</TD>' , 
+		'<TD>' + ISNULL(CAST(DATABASEPROPERTYEX(backupset.database_name, 'Recovery') AS VARCHAR),' ') + '</TD>' , 
+			'<TD>', REPLACE(CAST(MAX(CASE WHEN backupset.type = 'L' THEN backupset.backup_finish_date ELSE '1900-01-01 00:00:00.000' END) AS VARCHAR),'Jan  1 1900 12:00AM','-'),
+		 '</TD></TR>' 
+	FROM msdb.dbo.backupset 
+	inner join master.dbo.sysdatabases on (backupset.database_name = sysdatabases.name)
+	GROUP BY backupset.database_name
+	ORDER BY backupset.database_name DESC;
+	SELECT '</TABLE>';
+
+
+	SELECT '<H4><U>FAILED SQL AGENT JOBS</U></H4>';
+	SELECT '<TABLE border=1 cellpadding=3 cellspacing=0 style="font:8pt verdana;"><TR style="background-color:lightblue;"><TD><B>FailedJobName</B></TD><TD><B>TimeRun</B></TD></TR>';
+	;WITH CTE_MostRecentJobRun AS 
+	 ( 
+	 -- For each job get the most recent run (this will be the one where Rnk=1) 
+	 SELECT job_id,run_status,run_date,run_time 
+	 ,RANK() OVER (PARTITION BY job_id ORDER BY run_date DESC,run_time DESC) AS Rnk 
+	 FROM msdb.dbo.sysjobhistory 
+	 WHERE step_id=0
+	 ) 
+	SELECT  
+		'<TR><TD style="background-color:red;">' + name  + '</TD>' +
+		'<TD style="background-color:red;">' + CONVERT(VARCHAR,DATEADD(S,(run_time/10000)*60*60 /* hours */ 
+			   + ((run_time - (run_time/10000) * 10000)/100) * 60 /* mins */ 
+		       + (run_time - (run_time/100) * 100)  /* secs */, 
+		         CONVERT(DATETIME,RTRIM(run_date),113)),100) 
+			   +
+		'</TD></TR>'
+	FROM     
+		CTE_MostRecentJobRun MRJR 
+		INNER JOIN msdb.dbo.sysjobs SJ ON (MRJR.job_id=sj.job_id)
+	WHERE    
+		Rnk=1 
+		AND enabled=1
+		AND run_status=0 
+	ORDER BY name;
+	SELECT '</TABLE>';
+	
+	
+
+  SELECT '<H4><U>LOGIN STATUS</U></H4>';
+	SELECT '<TABLE border=1 cellpadding=3 cellspacing=0 style="font:8pt verdana;"><TR style="background-color:lightblue;">
+	<TD><B>PrimaryLogin</B></TD><TD><B>PRIM_LOGIN_STATE</B></TD><TD><B>SecondaryLogin</B></TD><TD><B>SEC_LOGIN_STATE</B></TD>
+	<TD><B>Primary_ModDate</B></TD><TD><B>SecondaryModDate</B></TD><TD><B>PRIMARY_SERVER</B></TD><TD><B>SECONDARY_SERVER</B></TD>
+	<TD><B>ACTION</B></TD></TR>'
+	SELECT 
+	   '<TR><TD>' +  ISNULL(CAST(PrimaryLogin AS VARCHAR), ' ') + '</TD>' , 
+		'<TD>' +  ISNULL(CAST(PRIMARY_LOGIN_STATE AS VARCHAR), ' ') + '</TD>' , 
+		'<TD>' +  ISNULL(CAST(SecondaryLogin AS VARCHAR), ' ') + '</TD>' , 
+		'<TD>' +  ISNULL(CAST(SECONDARY_LOGIN_STATE AS VARCHAR), ' ') + '</TD>' , 
+		'<TD>' +  ISNULL(CAST(PrimaryModDate AS VARCHAR), ' ') + '</TD>' , 
+		'<TD>' +  ISNULL(CAST(SecondaryModDate AS VARCHAR), ' ') + '</TD>' , 
+		'<TD>' +  ISNULL(CAST([PRIMARY SERVER] AS VARCHAR), ' ') + '</TD>' , 
+		'<TD>' +  ISNULL(CAST([SECONDARY SERVER] AS VARCHAR), ' ') + '</TD>' , 
+		'<TD style="background-color:red;">' +  ISNULL([ACTION]  , ' ')  + '</TD></TR>' 
+		FROM [DBA_DB].[dbo].[LOGIN_CHK]
+		where [TIMESTAMP] = (Select MAX(TIMESTAMP) from [DBA_DB].[dbo].[LOGIN_CHK])
+
+		SELECT '</TABLE>';
+
+	SELECT '<H4><U>AO DATABASE SYNC STATUS</U></H4>';
+	SELECT '<TABLE border=1 cellpadding=3 cellspacing=0 style="font:8pt verdana;"><TR style="background-color:lightblue;"><TD><B>DatabaseName</B></TD><TD><B>Primary_Last_Commit_Time</B></TD><TD><B>Reporting_Last_Commit_Time</B></TD><TD><B>Reporting_Sync_Lag_(secs)</B></TD><TD><B>FailOver_Last_Commit_Time</B></TD><TD><B>FailOver_Sync_Lag_(secs)</B></TD></TR>'
+	;WITH AG_Stats AS (
+				SELECT AGS.name                       AS AGGroupName, 
+					   AR.replica_server_name         AS InstanceName, 
+					   HARS.role_desc, 
+					   Db_name(DRS.database_id)       AS DBName, 
+					   DRS.database_id, 
+					   AR.availability_mode_desc      AS SyncMode, 
+					   DRS.synchronization_state_desc AS SyncState, 
+					   DRS.last_hardened_lsn, 
+					   DRS.end_of_log_lsn, 
+					   DRS.last_redone_lsn, 
+					   DRS.last_hardened_time,
+					   DRS.last_redone_time,
+					   DRS.log_send_queue_size, 
+					   DRS.redo_queue_size,
+					   DRS.last_commit_time
+				FROM   sys.dm_hadr_database_replica_states DRS 
+				LEFT JOIN sys.availability_replicas AR 
+				ON DRS.replica_id = AR.replica_id 
+				LEFT JOIN sys.availability_groups AGS 
+				ON AR.group_id = AGS.group_id 
+				LEFT JOIN sys.dm_hadr_availability_replica_states HARS ON AR.group_id = HARS.group_id 
+				AND AR.replica_id = HARS.replica_id 
+				),
+		Pri_CommitTime AS 
+				(
+				SELECT  DBName
+						, last_commit_time
+				FROM    AG_Stats
+				WHERE   role_desc = 'PRIMARY'
+				),
+		Rpt_CommitTime AS 
+				(
+				SELECT  DBName, last_commit_time
+				FROM    AG_Stats
+				WHERE   role_desc = 'SECONDARY' 
+				),
+		FO_CommitTime AS 
+				(
+				SELECT  DBName, last_commit_time
+				FROM    AG_Stats
+				WHERE   role_desc = 'SECONDARY' 
+				)
+	SELECT '<TR><TD>' + p.[DBName] + 
+				'</TD><TD align="center">'+ CAST(p.last_commit_time AS VARCHAR) + 
+				'</TD><TD align="center">' + CAST(r.last_commit_time AS VARCHAR) + 
+				'</TD><TD align="center"' + CASE WHEN (DATEDIFF(ss,r.last_commit_time,p.last_commit_time)>= 300) THEN 'style="background-color:red;"' ELSE '' END +'>' + CAST(DATEDIFF(ss,r.last_commit_time,p.last_commit_time) AS VARCHAR) +
+				'</TD><TD align="center">' + CAST(f.last_commit_time AS VARCHAR) +
+				'</TD><TD align="center">' + CAST(DATEDIFF(ss,f.last_commit_time,p.last_commit_time) AS VARCHAR) +
+				'</TD></TR>'
+	FROM Pri_CommitTime p
+	LEFT JOIN Rpt_CommitTime r ON [r].[DBName] = [p].[DBName]
+	LEFT JOIN FO_CommitTime f ON [f].[DBName] = [p].[DBName]
+	SELECT '</TABLE>'
+
+	IF EXISTS(SELECT * FROM master.dbo.sysdatabases WHERE name = 'distribution')
+	BEGIN
+
+	SELECT '<H4><U>REPLICATION STATUS</U></H4>';
+	SELECT '<TABLE border=1 cellpadding=3 cellspacing=0 style="font:8pt verdana;"><TR style="background-color:lightblue;"><TD><B>Publisher</B></TD><TD><B>PublisherDatabase</B></TD><TD><B>Publication</B></TD><TD><B>AgentName</B></TD><TD><B>AgentType</B></TD><TD><B>SubscriberLastSync</B></TD><TD><B>CurrentLatency</B></TD><TD><B>Status</B></TD><TD><B>Warning</B></TD></TR>';
+	SELECT 
+		'<TR><TD>' + ISNULL(publisher,' ') + '</TD>' +
+		'<TD>' +  ISNULL(publisher_db,' ') + '</TD>' +
+		'<TD>' +  ISNULL(publication,' ') + '</TD>' +
+		'<TD>' +  ISNULL(agent_name,' ') + '</TD>' +
+		'<TD>' + CASE
+				WHEN agent_type = 1 THEN 'Snapshot Agent'
+				WHEN agent_type = 2 THEN 'Log Reader Agent'
+				WHEN agent_type = 3 THEN 'Distribution Agent'
+				WHEN agent_type = 4 THEN 'Merge Agent'
+				WHEN agent_type = 9 THEN 'Queue Reader Agent'
+				ELSE ' '
+			END  + '</TD>' +
+		'<TD>' + ISNULL(CAST(last_distsync AS VARCHAR),'-') + '</TD>' +
+		'<TD' + CASE WHEN (ISNULL(cur_latency,0) >= 300) THEN 'style="background-color:red;"' ELSE '' END + '>' + ISNULL(CAST(cur_latency AS VARCHAR),'-') + '</TD>' +
+		'<TD ' + CASE WHEN (agent_type IN(2,3,4,9) AND status IN(5,6)) THEN 'style="background-color:red;"' ELSE '' END + '>' + 
+			CASE
+				WHEN status = 1 THEN 'Started'
+				WHEN status = 2 THEN 'Succeeded'
+				WHEN status = 3 THEN 'Running'
+				WHEN status = 4 THEN 'Idle'
+				WHEN status = 5 THEN 'Retrying'
+				WHEN status = 6 THEN 'Failed'
+				ELSE ' '
+			END  + '</TD>' +
+		'<TD' + CASE WHEN (warning > 0) THEN 'style="background-color:red;"' ELSE '' END + '>'+ 
+		CASE
+				WHEN warning = 0 THEN '-'
+				WHEN warning = 1 THEN 'Expiration'
+				WHEN warning = 2 THEN 'Latency'
+				WHEN warning = 4 THEN 'MergeExpiration'
+				WHEN warning = 16 THEN 'MergeSlowRunDuration'
+				WHEN warning = 32 THEN 'MergeFastRunSpeed'
+				WHEN warning = 64 THEN 'MergeSlowRunSpeed'
+				ELSE ' ' 
+			END  + '</TD></TR>' 		
+		FROM distribution.dbo.MSreplication_monitordata
+		ORDER BY
+			publisher_db,agent_type
+	SELECT '</TABLE>'
+
+	SELECT '<H4><U>REPLICATION ERRORS</U></H4>';
+	SELECT '<TABLE border=1 cellpadding=3 cellspacing=0 style="font:8pt verdana;"><TR style="background-color:lightblue;"><TD><B>Date</B></TD><TD><B>SourceName</B></TD><TD><B>Error</B></TD></TR>';
+	SELECT DISTINCT
+		'<TR><TD>' + CONVERT(VARCHAR(10),time,101) + '</TD>' +
+		'<TD>' + source_name  + '</TD>' +
+		'<TD>' + CAST(error_text AS VARCHAR(8000))  + '</TD></TR>' 
+		FROM distribution.dbo.MSrepl_errors
+		WHERE (error_code <> '') AND (time BETWEEN (GETDATE()-1) AND GETDATE())	
+	SELECT '</TABLE>'
+	END
+
+	SELECT '<H4><U>BLOCKING PROCESSES</U></H4>';
+	SELECT '<TABLE border=1 cellpadding=3 cellspacing=0 style="font:8pt verdana;"><TR style="background-color:lightblue;"><TD><B>State</B></TD><TD><B>spid</B></TD><TD><B>blockedby</B></TD><TD><B>hostname</B></TD><TD><B>dbname</B></TD><TD><B>loginame</B></TD><TD><B>kpid</B></TD><TD><B>status</B></TD><TD><B>login_time</B></TD><TD><B>last_batch</B></TD><TD><B>lastwaittype</B></TD><TD><B>cmd</B></TD><TD><B>program_name</B></TD><TD><B>text</B></TD></TR>'
+	SELECT 
+	   '<TR><TD>' + ISNULL(state, ' ') + '</TD>' , 
+		'<TD>' +  ISNULL(CAST(spid AS VARCHAR), ' ') + '</TD>' , 
+		'<TD>' +  ISNULL(CAST(blockedby AS VARCHAR), ' ') + '</TD>' , 
+		'<TD>' +  ISNULL(LTRIM(RTRIM(hostname)), ' ') + '</TD>' , 
+		'<TD>' +  ISNULL(LTRIM(RTRIM(dbname)), ' ') + '</TD>' , 
+		'<TD>' +  ISNULL(LTRIM(RTRIM(loginame)), ' ') + '</TD>' , 
+		'<TD>' +  ISNULL(CAST(kpid AS VARCHAR), ' ') + '</TD>' , 
+		'<TD>' +  ISNULL(LTRIM(RTRIM(status)), ' ') + '</TD>' , 
+		'<TD>' +  ISNULL(CAST(login_time AS VARCHAR), ' ') + '</TD>' , 
+		'<TD>' +  ISNULL(CAST(last_batch AS VARCHAR), ' ') + '</TD>' , 
+		'<TD>' +  ISNULL(LTRIM(RTRIM(lastwaittype)), ' ') + '</TD>' , 
+		'<TD>' +  ISNULL(LTRIM(RTRIM(cmd)), ' ') + '</TD>' , 
+		'<TD>' +  ISNULL(LTRIM(RTRIM(program_name)), ' ') + '</TD>' , 
+		'<TD>' +  ISNULL(LTRIM(RTRIM(text)), ' ')  + '</TD></TR>'
+	FROM
+		(
+			select 
+				'Blocking' as 'state', 
+				s1.spid,
+				s1.blocked as 'blockedby',
+				s1.hostname, 
+				db_name(s1.dbid) as dbname, 
+				s1.loginame,
+				s1.kpid,
+				s1.status,
+				s1.login_time,
+				s1.last_batch,
+				s1.lastwaittype,
+				s1.cmd,
+				s1.program_name,
+				s2.text
+			from sys.sysprocesses AS s1 (nolock)
+			cross apply sys.dm_exec_sql_text(sql_handle) AS s2 
+			where 
+				spid in (
+					select distinct blocked 
+					from sys.sysprocesses (nolock)
+					where blocked <> 0
+					) 
+				and blocked = 0  
+			union all
+			select 
+				'Blocked' as 'state', 
+				s1.spid,
+				s1.blocked as 'blockedby',
+				s1.hostname, 
+				db_name(s1.dbid) as dbname, 
+				s1.loginame,
+				s1.kpid,
+				s1.status,
+				s1.login_time,
+				s1.last_batch,
+				s1.lastwaittype,
+				s1.cmd,
+				s1.program_name,
+				s2.text
+			from sys.sysprocesses AS s1 (nolock) 
+			cross apply sys.dm_exec_sql_text(sql_handle) AS s2 
+			where blocked <> 0  
+		) dt
+	order by state desc
+	SELECT '</TABLE>';
+
+	SELECT '<H4><U>MEMORY STATUS</U></H4>';
+	SELECT '<TABLE border=1 cellpadding=3 cellspacing=0 style="font:8pt verdana;"><TR style="background-color:lightblue;"><TD><B>MemoryStatus</B></TD></TR>';
+	SELECT '<TR><TD>1) Physical Memory: ' + CAST(CEILING((physical_memory_kb/1024.0)) AS VARCHAR) + ' MB</TD></TR>' FROM sys.dm_os_sys_info
+	SELECT '<TR><TD>2) SQL Instance min server memory: ' + CAST(value as VARCHAR) + ' MB</TD></TR>' from sys.configurations where name = 'min server memory (MB)'
+	SELECT '<TR><TD>3) SQL Instance max server memory: ' + CAST(value as VARCHAR) + ' MB</TD></TR>' from sys.configurations where name = 'max server memory (MB)'
+	SELECT '<TR><TD>4) SQL Instance current memory usage: ' + CAST(CEILING((cntr_value/1024.0)) AS VARCHAR) + ' MB</TD></TR>' FROM sys.dm_os_performance_counters WHERE counter_name = 'Total Server Memory (KB)'
+	SELECT '<TR><TD>5) SQL Instance target memory: ' + CAST(CEILING((cntr_value/1024.0)) AS VARCHAR) + ' MB</TD></TR>' FROM sys.dm_os_performance_counters WHERE counter_name = 'Target Server Memory (KB)'
+	SELECT '<TR><TD>6) Page Life Expectancy (PLE): ' + CAST(cntr_value AS VARCHAR) + ' sec</TD></TR>' FROM sys.dm_os_performance_counters WHERE object_name LIKE '%Manager%' AND counter_name = 'Page life expectancy'
+	SELECT '<TR><TD>7) Buffer Cache Hit Ratio: ' + CAST(CEILING(((a.cntr_value * 1.0 / b.cntr_value) * 100.0)) AS VARCHAR) + '%</TD></TR>' FROM sys.dm_os_performance_counters a JOIN  (SELECT cntr_value, OBJECT_NAME FROM sys.dm_os_performance_counters WHERE counter_name = 'Buffer cache hit ratio base' AND OBJECT_NAME  LIKE '%Buffer Manager%') b ON  a.OBJECT_NAME = b.OBJECT_NAME WHERE a.counter_name = 'Buffer cache hit ratio' AND a.OBJECT_NAME  LIKE '%Buffer Manager%'
+	SELECT '</TABLE>';
+
+
+	SELECT '<H4><U>CONNECTION DETAILS</U></H4>';
+	SELECT '<TABLE border=1 cellpadding=3 cellspacing=0 style="font:8pt verdana;"><TR style="background-color:lightblue;"><TD><B>CPU</B></TD><TD><B>WaitTime</B></TD><TD><B>ElapsedTime</B></TD><TD><B>Reads</B></TD><TD><B>Writes</B></TD><TD><B>Connections</B></TD><TD><B>DatabaseName</B></TD><TD><B>LoginName</B></TD><TD><B>Program</B></TD></TR>'
+	SELECT 
+		'<TR><TD>' + CAST(SUM(cpu_time) AS VARCHAR) + '</TD>' + 
+		'<TD>' +  CAST(SUM(total_scheduled_time) AS VARCHAR) + '</TD>' +
+		'<TD>' +  CAST(SUM(CAST(total_elapsed_time AS BIGINT)) AS VARCHAR) + '</TD>' +
+		'<TD>' +  CAST(SUM(num_reads) AS VARCHAR) + '</TD>' +
+		'<TD>' +  CAST(SUM(num_writes) AS VARCHAR) + '</TD>' +
+		'<TD>' +  CAST(COUNT(1) AS VARCHAR) + '</TD>' +
+		'<TD>' +  ISNULL(db_name(database_id),' ') + '</TD>' +
+		'<TD>' +  ISNULL(login_name,' ') + '</TD>' +
+		'<TD>' +  ISNULL(program_name,' ') + '</TD></TR>' 
+	FROM sys.dm_exec_connections con
+	LEFT JOIN sys.dm_exec_sessions ses
+		ON ses.session_id = con.session_id
+		WHERE database_id > 0 and 
+			  db_name(database_id) not in ('master','msdb','model','tempdb','distribution','dba_db') and
+			  program_name not like 'Repl-LogReader%'
+	GROUP BY database_id, login_name, program_name
+	ORDER BY db_name(database_id)
+	SELECT '</TABLE>';
+
+	SELECT '<H4><U>WAIT STATS</U></H4>';
+	SELECT '<TABLE border=1 cellpadding=3 cellspacing=0 style="font:8pt verdana;"><TR style="background-color:lightblue;"><TD><B>WaitType</B></TD><TD><B>Wait_S</B></TD><TD><B>Resource_S</B></TD><TD><B>Signal_S</B></TD><TD><B>WaitCount</B></TD><TD><B>Percentage</B></TD><TD><B>AvgWait_S</B></TD><TD><B>AvgRes_S</B></TD><TD><B>AvgSig_S</B></TD></TR>'
+	;WITH [Waits] AS
+		(SELECT
+			[wait_type],
+			[wait_time_ms] / 1000.0 AS [WaitS],
+			([wait_time_ms] - [signal_wait_time_ms]) / 1000.0 AS [ResourceS],
+			[signal_wait_time_ms] / 1000.0 AS [SignalS],
+			[waiting_tasks_count] AS [WaitCount],
+			100.0 * [wait_time_ms] / SUM ([wait_time_ms]) OVER() AS [Percentage],
+			ROW_NUMBER() OVER(ORDER BY [wait_time_ms] DESC) AS [RowNum]
+		FROM sys.dm_os_wait_stats
+		WHERE [wait_type] NOT IN (
+			N'BROKER_EVENTHANDLER',             N'BROKER_RECEIVE_WAITFOR',
+			N'BROKER_TASK_STOP',                N'BROKER_TO_FLUSH',
+			N'BROKER_TRANSMITTER',              N'CHECKPOINT_QUEUE',
+			N'CHKPT',                           N'CLR_AUTO_EVENT',
+			N'CLR_MANUAL_EVENT',                N'CLR_SEMAPHORE',
+			N'DBMIRROR_DBM_EVENT',              N'DBMIRROR_EVENTS_QUEUE',
+			N'DBMIRROR_WORKER_QUEUE',           N'DBMIRRORING_CMD',
+			N'DIRTY_PAGE_POLL',                 N'DISPATCHER_QUEUE_SEMAPHORE',
+			N'EXECSYNC',                        N'FSAGENT',
+			N'FT_IFTS_SCHEDULER_IDLE_WAIT',     N'FT_IFTSHC_MUTEX',
+			N'HADR_CLUSAPI_CALL',               N'HADR_FILESTREAM_IOMGR_IOCOMPLETION',
+			N'HADR_LOGCAPTURE_WAIT',            N'HADR_NOTIFICATION_DEQUEUE',
+			N'HADR_TIMER_TASK',                 N'HADR_WORK_QUEUE',
+			N'KSOURCE_WAKEUP',                  N'LAZYWRITER_SLEEP',
+			N'LOGMGR_QUEUE',                    N'ONDEMAND_TASK_QUEUE',
+			N'PWAIT_ALL_COMPONENTS_INITIALIZED',
+			N'QDS_PERSIST_TASK_MAIN_LOOP_SLEEP',
+			N'QDS_CLEANUP_STALE_QUERIES_TASK_MAIN_LOOP_SLEEP',
+			N'REQUEST_FOR_DEADLOCK_SEARCH',     N'RESOURCE_QUEUE',
+			N'SERVER_IDLE_CHECK',               N'SLEEP_BPOOL_FLUSH',
+			N'SLEEP_DBSTARTUP',                 N'SLEEP_DCOMSTARTUP',
+			N'SLEEP_MASTERDBREADY',             N'SLEEP_MASTERMDREADY',
+			N'SLEEP_MASTERUPGRADED',            N'SLEEP_MSDBSTARTUP',
+			N'SLEEP_SYSTEMTASK',                N'SLEEP_TASK',
+			N'SLEEP_TEMPDBSTARTUP',             N'SNI_HTTP_ACCEPT',
+			N'SP_SERVER_DIAGNOSTICS_SLEEP',     N'SQLTRACE_BUFFER_FLUSH',
+			N'SQLTRACE_INCREMENTAL_FLUSH_SLEEP',
+			N'SQLTRACE_WAIT_ENTRIES',           N'WAIT_FOR_RESULTS',
+			N'WAITFOR',                         N'WAITFOR_TASKSHUTDOWN',
+			N'WAIT_XTP_HOST_WAIT',              N'WAIT_XTP_OFFLINE_CKPT_NEW_LOG',
+			N'WAIT_XTP_CKPT_CLOSE',             N'XE_DISPATCHER_JOIN',
+			N'XE_DISPATCHER_WAIT',              N'XE_TIMER_EVENT', N'CXPACKET')
+		AND [waiting_tasks_count] > 0
+	)
+	SELECT 
+		'<TR><TD>' + MAX ([W1].[wait_type])  + '</TD>' + 
+		'<TD>' +  CAST(CAST (MAX ([W1].[WaitS]) AS DECIMAL (16,2)) AS VARCHAR)  + '</TD>' +
+		'<TD>' +  CAST(CAST (MAX ([W1].[ResourceS]) AS DECIMAL (16,2)) AS VARCHAR)  + '</TD>' +
+		'<TD>' +  CAST(CAST (MAX ([W1].[SignalS]) AS DECIMAL (16,2)) AS VARCHAR)  + '</TD>' +
+		'<TD>' +  CAST(MAX ([W1].[WaitCount]) AS VARCHAR)  + '</TD>' +
+		'<TD>' +  CAST(CAST (MAX ([W1].[Percentage]) AS DECIMAL (5,2)) AS VARCHAR)  + '</TD>' +
+		'<TD>' +  CAST(CAST ((MAX ([W1].[WaitS]) / MAX ([W1].[WaitCount])) AS DECIMAL (16,4)) AS VARCHAR)   + '</TD>' +
+		'<TD>' +  CAST(CAST ((MAX ([W1].[ResourceS]) / MAX ([W1].[WaitCount])) AS DECIMAL (16,4)) AS VARCHAR)   + '</TD>' +
+		'<TD>' +  CAST(CAST ((MAX ([W1].[SignalS]) / MAX ([W1].[WaitCount])) AS DECIMAL (16,4)) AS VARCHAR)   + '</TD></TR>' 
+	FROM [Waits] AS [W1]
+	INNER JOIN [Waits] AS [W2]
+		ON [W2].[RowNum] <= [W1].[RowNum]
+	GROUP BY [W1].[RowNum]
+	HAVING SUM ([W2].[Percentage]) - MAX ([W1].[Percentage]) < 95; -- percentage threshold
+	SELECT '</TABLE>';
+
+	SELECT '<H4><U>LONG RUNNING QUERIES</U></H4>';
+	SELECT '<TABLE border=1 cellpadding=3 cellspacing=0 style="font:8pt verdana;"><TR style="background-color:lightblue;"><TD><B>cpu_time</B></TD><TD><B>session_id</B></TD><TD><B>host_name</B></TD><TD><B>login_name</B></TD><TD><B>database_name</B></TD><TD><B>start_time</B></TD><TD><B>text</B></TD></TR>'
+	SELECT TOP 10
+		'<TR><TD>' + ISNULL(CAST(R.cpu_time AS VARCHAR),' ') + '</TD>' + 
+		'<TD>' +  ISNULL(CAST(R.session_id  AS VARCHAR),' ') + '</TD>' + 
+		'<TD>' + ISNULL(S.host_name,' ') + '</TD>' + 
+		'<TD>' + ISNULL(S.login_name,' ') + '</TD>' + 
+		'<TD>' + ISNULL(db_name(R.database_id),' ') + '</TD>' + 
+		'<TD>' +  ISNULL(CAST(R.start_time AS VARCHAR),' ') + '</TD>' + 
+		'<TD>' + ISNULL(ST.text,' ') + '</TD></TR>' 
+	FROM 
+		sys.dm_exec_requests R
+		INNER JOIN sys.dm_exec_sessions S ON (R.session_id = S.session_id)
+		CROSS APPLY sys.dm_exec_sql_text(sql_handle) ST
+	WHERE
+		R.plan_handle IS NOT NULL
+		and R.session_id >50
+		and R.cpu_time > 0
+	ORDER BY 
+		R.cpu_time desc
+	SELECT '</TABLE>';
+
+	SELECT '<H4><U>ORPHAN USERS</U></H4>';
+	SELECT '<TABLE border=1 cellpadding=3 cellspacing=0 style="font:8pt verdana;"><TR style="background-color:lightblue;"><TD><B>DatabaseName</B></TD><TD><B>OrphanUser</B></TD></TR>'
+	EXEC sp_MSforeachDB '
+		select ''<TR><TD>?</TD><TD>'' + U.name + ''</TD></TR>''
+		from ?.sys.database_principals U
+		where [type] in (''S'',''G'',''U'') and
+		principal_id > 4 and is_fixed_role = 0 and    
+		not exists (select * from sys.server_principals S where U.sid = s.sid)'
+	SELECT '</TABLE>'
+
+	SELECT '<H4><U>SQL SERVICES STATUS</U></H4>';
+	SELECT '<TABLE border=1 cellpadding=3 cellspacing=0 style="font:8pt verdana;"><TR style="background-color:lightblue;"><TD><B>ServiceName</B></TD><TD><B>StartupType</B></TD><TD><B>Status</B></TD><TD><B>LastStartupTime</B></TD><TD><B>ServiceAccount</B></TD><TD><B>IsClustered</B></TD><TD><B>ClusterNodeName</B></TD><TD><B>ProcessId</B></TD></TR>'
+	SELECT 
+		'<TR><TD>' + DSS.servicename + '</TD>' + 
+		'<TD>' +  DSS.startup_type_desc + '</TD>' + 
+		'<TD>' +  DSS.status_desc + '</TD>' + 
+		'<TD>' +  ISNULL(CAST(DSS.last_startup_time AS VARCHAR),'-') + '</TD>' + 
+		'<TD>' +  DSS.service_account + '</TD>' + 
+		'<TD>' +  DSS.is_clustered + '</TD>' + 
+		'<TD>' +  ISNULL(DSS.cluster_nodename,'-') + '</TD>' + 
+		'<TD>' +  CAST(DSS.process_id AS VARCHAR) + '</TD></TR>' 
+	FROM    
+		sys.dm_server_services AS DSS;
+	SELECT '</TABLE>';
+
+	DECLARE @fromDate datetime
+	DECLARE @toDate datetime
+
+	CREATE TABLE #read_error_log
+	(
+     		logdate      DATETIME,
+     		processinfo  VARCHAR(200),
+     		errorlogtext VARCHAR(max)
+	) 
+
+	SET @fromDate = DATEADD(hh,-12,GETDATE())
+	SET @toDate = GETDATE()
+
+	INSERT INTO #read_error_log 
+	EXEC master.dbo.xp_readerrorlog 0,1,N'error',NULL,@fromDate,@toDate,'ASC'
+
+	INSERT INTO #read_error_log 
+	EXEC master.dbo.xp_readerrorlog 0,1,N'failed',NULL,@fromDate,@toDate,'ASC'
+
+	UPDATE #read_error_log SET logdate = CONVERT(VARCHAR(13),logdate,120) + ':00:00.000'
+
+	SELECT '<H4><U>ERROR LOG</U></H4>';
+	SELECT '<TABLE border=1 cellpadding=3 cellspacing=0 style="font:8pt verdana;"><TR style="background-color:lightblue;"><TD><B>LogDate</B></TD><TD><B>ProcessInfo</B></TD><TD><B>ErrorLogText</B></TD></TR>';
+	
+	SELECT 
+		'<TR><TD>' + CAST(MAX(logdate) AS VARCHAR) + '</TD>' +
+		'<TD>' + processinfo  + '</TD>' +
+		'<TD>' + errorlogtext + '</TD></TR>'
+	FROM #read_error_log
+	GROUP BY 
+		logdate,
+		processinfo,
+		errorlogtext
+	ORDER BY logdate DESC 
+	SELECT '</TABLE>';
+
+	DROP TABLE #read_error_log
+
+
+	SELECT '<H4><U>DISK SPACE REPORT</U></H4>';
+	SELECT '<object width="100%" height="100%" type="text/html" data="DiskSpaceReport\' +  REPLACE(@@SERVERNAME,'\','_') + '_Disks_MountPoints_Space_'+ REPLACE(REPLACE(REPLACE(CAST(CONVERT(VARCHAR(14),GETDATE(),120) AS VARCHAR),'-',''),' ',''),':','') + '.html">';
+	SELECT '</BODY></HTML>';
+
+END
+
+
+GO
