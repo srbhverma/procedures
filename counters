@@ -1,4 +1,56 @@
-<Counter>\MSSQL$CSAPERIODW_P:Access Methods\Forwarded Records/sec</Counter>
+<?xml version="1.0" encoding="UTF-16"?>
+<DataCollectorSet>
+	<Status>1</Status>
+	<Duration>0</Duration>
+	<Description>
+	</Description>
+	<DescriptionUnresolved>
+	</DescriptionUnresolved>
+	<DisplayName>
+	</DisplayName>
+	<DisplayNameUnresolved>
+	</DisplayNameUnresolved>
+	<SchedulesEnabled>-1</SchedulesEnabled>
+	<LatestOutputLocation>D:\Baseline_instance_V2\AGPRDACSCRMDW01_20180731-000002</LatestOutputLocation>
+	<Name>Baseline_instance_V2</Name>
+	<OutputLocation>D:\Baseline_instance_V2\AGPRDACSCRMDW01_20180731-000003</OutputLocation>
+	<RootPath>D:\Baseline_instance_V2</RootPath>
+	<Segment>0</Segment>
+	<SegmentMaxDuration>0</SegmentMaxDuration>
+	<SegmentMaxSize>0</SegmentMaxSize>
+	<SerialNumber>3</SerialNumber>
+	<Server>
+	</Server>
+	<Subdirectory>
+	</Subdirectory>
+	<SubdirectoryFormat>3</SubdirectoryFormat>
+	<SubdirectoryFormatPattern>yyyyMMdd\-NNNNNN</SubdirectoryFormatPattern>
+	<Task>
+	</Task>
+	<TaskRunAsSelf>0</TaskRunAsSelf>
+	<TaskArguments>
+	</TaskArguments>
+	<TaskUserTextArguments>
+	</TaskUserTextArguments>
+	<UserAccount>SYSTEM</UserAccount>
+	<Security>O:BAG:DUD:AI(A;;FA;;;SY)(A;;FA;;;BA)(A;;FR;;;LU)(A;;0x1301ff;;;S-1-5-80-2661322625-712705077-2999183737-3043590567-590698655)(A;;FR;;;SY)(A;ID;FA;;;SY)(A;ID;FA;;;BA)(A;ID;0x1200ab;;;LU)(A;ID;FR;;;AU)(A;ID;FR;;;LS)(A;ID;FR;;;NS)</Security>
+	<StopOnCompletion>0</StopOnCompletion>
+	<PerformanceCounterDataCollector>
+		<DataCollectorType>0</DataCollectorType>
+		<Name>DataCollector01</Name>
+		<FileName>DataCollector01</FileName>
+		<FileNameFormat>3</FileNameFormat>
+		<FileNameFormatPattern>DDD</FileNameFormatPattern>
+		<LogAppend>0</LogAppend>
+		<LogCircular>0</LogCircular>
+		<LogOverwrite>0</LogOverwrite>
+		<LatestOutputLocation>D:\Baseline_instance_V2\AGPRDACSCRMDW01_20180731-000002\AGPRDACSCRMDW01_DataCollector01213.csv</LatestOutputLocation>
+		<DataSourceName>
+		</DataSourceName>
+		<SampleInterval>15</SampleInterval>
+		<SegmentMaxRecords>0</SegmentMaxRecords>
+		<LogFileFormat>0</LogFileFormat>
+		<Counter>\MSSQL$CSAPERIODW_P:Access Methods\Forwarded Records/sec</Counter>
 		<Counter>\MSSQL$CSAPERIODW_P:Access Methods\Full Scans/sec</Counter>
 		<Counter>\MSSQL$CSAPERIODW_P:Access Methods\Index Searches/sec</Counter>
 		<Counter>\MSSQL$CSAPERIODW_P:Access Methods\Page Splits/sec</Counter>
@@ -128,7 +180,138 @@
 		<CounterDisplayName>\Process(sqlservr)\% Processor Time</CounterDisplayName>
 		<CounterDisplayName>\Process(sqlservr)\% User Time</CounterDisplayName>
 		<CounterDisplayName>\Process(sqlservr)\Working Set</CounterDisplayName>
-		
+	</PerformanceCounterDataCollector>
+	<Schedule>
+		<StartDate>7/31/2018</StartDate>
+		<EndDate>
+		</EndDate>
+		<StartTime>
+		</StartTime>
+		<Days>127</Days>
+	</Schedule>
+	<DataManager>
+		<Enabled>0</Enabled>
+		<CheckBeforeRunning>0</CheckBeforeRunning>
+		<MinFreeDisk>0</MinFreeDisk>
+		<MaxSize>0</MaxSize>
+		<MaxFolderCount>0</MaxFolderCount>
+		<ResourcePolicy>0</ResourcePolicy>
+		<ReportFileName>report.html</ReportFileName>
+		<RuleTargetFileName>report.xml</RuleTargetFileName>
+		<EventsFileName>
+		</EventsFileName>
+		<FolderAction>
+			<Size>0</Size>
+			<Age>180</Age>
+			<Actions>2</Actions>
+			<SendCabTo>
+			</SendCabTo>
+		</FolderAction>
+	</DataManager>
+</DataCollectorSet>
+
+
+
+
+
+
+
+
+
+
+
+
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+<?xml version="1.0" encoding="UTF-16"?>
+
+-<DataCollectorSet>
+
+<Status>1</Status>
+
+<Duration>0</Duration>
+
+<Description> </Description>
+
+<DescriptionUnresolved> </DescriptionUnresolved>
+
+<DisplayName> </DisplayName>
+
+<DisplayNameUnresolved> </DisplayNameUnresolved>
+
+<SchedulesEnabled>-1</SchedulesEnabled>
+
+<LatestOutputLocation>D:\Baseline_OS_V2\AGPRDACSCRMDW01_20180731-000002</LatestOutputLocation>
+
+<Name>Baseline_OS_V2</Name>
+
+<OutputLocation>D:\Baseline_OS_V2\AGPRDACSCRMDW01_20180731-000003</OutputLocation>
+
+<RootPath>D:\Baseline_OS_V2</RootPath>
+
+<Segment>0</Segment>
+
+<SegmentMaxDuration>0</SegmentMaxDuration>
+
+<SegmentMaxSize>0</SegmentMaxSize>
+
+<SerialNumber>3</SerialNumber>
+
+<Server> </Server>
+
+<Subdirectory> </Subdirectory>
+
+<SubdirectoryFormat>3</SubdirectoryFormat>
+
+<SubdirectoryFormatPattern>yyyyMMdd\-NNNNNN</SubdirectoryFormatPattern>
+
+<Task> </Task>
+
+<TaskRunAsSelf>0</TaskRunAsSelf>
+
+<TaskArguments> </TaskArguments>
+
+<TaskUserTextArguments> </TaskUserTextArguments>
+
+<UserAccount>SYSTEM</UserAccount>
+
+<Security>O:BAG:DUD:AI(A;;FA;;;SY)(A;;FA;;;BA)(A;;FR;;;LU)(A;;0x1301ff;;;S-1-5-80-2661322625-712705077-2999183737-3043590567-590698655)(A;;FR;;;SY)(A;ID;FA;;;SY)(A;ID;FA;;;BA)(A;ID;0x1200ab;;;LU)(A;ID;FR;;;AU)(A;ID;FR;;;LS)(A;ID;FR;;;NS)</Security>
+
+<StopOnCompletion>0</StopOnCompletion>
+
+
+-<PerformanceCounterDataCollector>
+
+<DataCollectorType>0</DataCollectorType>
+
+<Name>DataCollector01</Name>
+
+<FileName>DataCollector01</FileName>
+
+<FileNameFormat>1</FileNameFormat>
+
+<FileNameFormatPattern>DDD</FileNameFormatPattern>
+
+<LogAppend>0</LogAppend>
+
+<LogCircular>0</LogCircular>
+
+<LogOverwrite>0</LogOverwrite>
+
+<LatestOutputLocation>D:\Baseline_OS_V2\AGPRDACSCRMDW01_20180731-000002\DataCollector01213.csv</LatestOutputLocation>
+
+<DataSourceName> </DataSourceName>
+
+<SampleInterval>15</SampleInterval>
+
+<SegmentMaxRecords>0</SegmentMaxRecords>
+
+<LogFileFormat>0</LogFileFormat>
+
 <Counter>\LogicalDisk(*)\% Disk Read Time</Counter>
 
 <Counter>\LogicalDisk(*)\% Disk Time</Counter>
@@ -252,3 +435,67 @@
 <CounterDisplayName>\System\Processor Queue Length</CounterDisplayName>
 
 <CounterDisplayName>\Thread(_Total/_Total)\Context Switches/sec</CounterDisplayName>
+
+</PerformanceCounterDataCollector>
+
+
+-<Schedule>
+
+<StartDate>7/31/2018</StartDate>
+
+<EndDate> </EndDate>
+
+<StartTime> </StartTime>
+
+<Days>127</Days>
+
+</Schedule>
+
+
+-<DataManager>
+
+<Enabled>0</Enabled>
+
+<CheckBeforeRunning>-1</CheckBeforeRunning>
+
+<MinFreeDisk>0</MinFreeDisk>
+
+<MaxSize>0</MaxSize>
+
+<MaxFolderCount>0</MaxFolderCount>
+
+<ResourcePolicy>0</ResourcePolicy>
+
+<ReportFileName>report.html</ReportFileName>
+
+<RuleTargetFileName>report.xml</RuleTargetFileName>
+
+<EventsFileName> </EventsFileName>
+
+
+-<FolderAction>
+
+<Size>0</Size>
+
+<Age>180</Age>
+
+<Actions>2</Actions>
+
+<SendCabTo> </SendCabTo>
+
+</FolderAction>
+
+</DataManager>
+
+</DataCollectorSet>
+
+
+
+
+
+
+
+
+
+
+
