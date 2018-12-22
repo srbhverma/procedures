@@ -491,3 +491,131 @@ END
 
 
 GO
+
+
+-----------------------==============================================+++++++++++++++++++++++++++++++++==========================----------------------
+
+USE [msdb]
+GO
+
+/****** Object:  Job [SQLInstanceMonitoringReport]    Script Date: 22/12/2018 02:46:50 ******/
+BEGIN TRANSACTION
+DECLARE @ReturnCode INT
+SELECT @ReturnCode = 0
+/****** Object:  JobCategory [DBA_JOBS]    Script Date: 22/12/2018 02:46:50 ******/
+IF NOT EXISTS (SELECT name FROM msdb.dbo.syscategories WHERE name=N'DBA_JOBS' AND category_class=1)
+BEGIN
+EXEC @ReturnCode = msdb.dbo.sp_add_category @class=N'JOB', @type=N'LOCAL', @name=N'DBA_JOBS'
+IF (@@ERROR <> 0 OR @ReturnCode <> 0) GOTO QuitWithRollback
+
+END
+
+DECLARE @jobId BINARY(16)
+EXEC @ReturnCode =  msdb.dbo.sp_add_job @job_name=N'SQLInstanceMonitoringReport', 
+		@enabled=1, 
+		@notify_level_eventlog=0, 
+		@notify_level_email=0, 
+		@notify_level_netsend=0, 
+		@notify_level_page=0, 
+		@delete_level=0, 
+		@description=N'No description available.', 
+		@category_name=N'DBA_JOBS', 
+		@owner_login_name=N'SA', @job_id = @jobId OUTPUT
+IF (@@ERROR <> 0 OR @ReturnCode <> 0) GOTO QuitWithRollback
+/****** Object:  Step [SQLInstanceMonitoringReport]    Script Date: 22/12/2018 02:46:50 ******/
+EXEC @ReturnCode = msdb.dbo.sp_add_jobstep @job_id=@jobId, @step_name=N'SQLInstanceMonitoringReport', 
+		@step_id=1, 
+		@cmdexec_success_code=0, 
+		@on_success_action=3, 
+		@on_success_step_id=0, 
+		@on_fail_action=2, 
+		@on_fail_step_id=0, 
+		@retry_attempts=0, 
+		@retry_interval=0, 
+		@os_run_priority=0, @subsystem=N'TSQL', 
+		@command=N'DECLARE @ReportPath VARCHAR(500)
+DECLARE @SQLStr VARCHAR (1000)
+
+SET @ReportPath = ''Z:\MSSQL\BACKUP\REPORTS''
+
+SET @SQLStr = ''SQLCMD -S'' + @@SERVERNAME +'' -h-1 -s''+ CHAR(34)+ CHAR(9)+ CHAR(34)+ '' -W -Q "EXEC [DBA_DB].[dbo].[usp_SQLInstanceMonitoringReport]" > '' + @ReportPath + ''\'' + REPLACE(@@SERVERNAME,''\'',''_'') + ''_SQLReport_''+ REPLACE(REPLACE(REPLACE(CAST(CONVERT(VARCHAR(16),GETDATE(),120) AS VARCHAR),''-'',''''),'' '',''''),'':'','''') +''.html''
+
+EXEC master.dbo.xp_cmdshell @SQLStr', 
+		@database_name=N'master', 
+		@flags=0
+IF (@@ERROR <> 0 OR @ReturnCode <> 0) GOTO QuitWithRollback
+/****** Object:  Step [DiskSpaceReport]    Script Date: 22/12/2018 02:46:51 ******/
+EXEC @ReturnCode = msdb.dbo.sp_add_jobstep @job_id=@jobId, @step_name=N'DiskSpaceReport', 
+		@step_id=2, 
+		@cmdexec_success_code=0, 
+		@on_success_action=3, 
+		@on_success_step_id=0, 
+		@on_fail_action=2, 
+		@on_fail_step_id=0, 
+		@retry_attempts=0, 
+		@retry_interval=0, 
+		@os_run_priority=0, @subsystem=N'PowerShell', 
+		@command=N'$datetime = Get-Date -Format yyyyMMddHH
+$a = "<style>"
+$a = $a + "TABLE{border-width:1px;border-spacing:0px;border-style:solid;border-color:black;font:8pt verdana;}"
+$a = $a + "TH{border-width:1px;padding:3px;border-style: solid;border-color: black;font:bold 8pt verdana;background-color:lightblue;}"
+$a = $a + "TD{border-width:1px;padding:3px;border-style:solid;border-color:black;font:8pt verdana;}"
+$a = $a + "</style>"
+$BlockSizeKB = @{Name="BlockSize(KB)";expression={[math]::round(($_.Blocksize/ 1024),2)}}
+$TotalGB = @{Name="Capacity(GB)";expression={[math]::round(($_.Capacity/ 1073741824),2)}}
+$FreeGB = @{Name="FreeSpace(GB)";expression={[math]::round(($_.FreeSpace / 1073741824),2)}}
+$FreePerc = @{Name="Free(%)";expression={[math]::round(((($_.FreeSpace / 1073741824)/($_.Capacity / 1073741824)) * 100),0)}}
+
+gwmi win32_volume|where-object {$_.filesystem -match “ntfs”}|select label,name,$BlockSizeKB,$TotalGB, $FreeGB, $FreePerc|ConvertTo-HTML -head $a|Out-File Z:\MSSQL\BACKUP\REPORTS\DISKSPACEREPORT\AGPRDVTMCRMSC01_TMAPERIO_P_Disks_MountPoints_Space_$datetime.html
+', 
+		@database_name=N'master', 
+		@flags=0
+IF (@@ERROR <> 0 OR @ReturnCode <> 0) GOTO QuitWithRollback
+/****** Object:  Step [Delete Old Files]    Script Date: 22/12/2018 02:46:51 ******/
+EXEC @ReturnCode = msdb.dbo.sp_add_jobstep @job_id=@jobId, @step_name=N'Delete Old Files', 
+		@step_id=3, 
+		@cmdexec_success_code=0, 
+		@on_success_action=1, 
+		@on_success_step_id=0, 
+		@on_fail_action=2, 
+		@on_fail_step_id=0, 
+		@retry_attempts=0, 
+		@retry_interval=0, 
+		@os_run_priority=0, @subsystem=N'TSQL', 
+		@command=N'exec master.dbo.xp_cmdshell ''PowerShell.exe -noprofile -command "Get-ChildItem -Path ''''Z:\MSSQL\Backup\Reports'''' -Include @(''''*.html'''') -Recurse -Force | ? {$_.LastWriteTime -lt (Get-Date).AddDays(-8)} | foreach ($_) {remove-item $_.fullname}"''', 
+		@database_name=N'master', 
+		@flags=0
+IF (@@ERROR <> 0 OR @ReturnCode <> 0) GOTO QuitWithRollback
+EXEC @ReturnCode = msdb.dbo.sp_update_job @job_id = @jobId, @start_step_id = 1
+IF (@@ERROR <> 0 OR @ReturnCode <> 0) GOTO QuitWithRollback
+EXEC @ReturnCode = msdb.dbo.sp_add_jobschedule @job_id=@jobId, @name=N'Every 1 hours', 
+		@enabled=1, 
+		@freq_type=4, 
+		@freq_interval=1, 
+		@freq_subday_type=8, 
+		@freq_subday_interval=1, 
+		@freq_relative_interval=0, 
+		@freq_recurrence_factor=0, 
+		@active_start_date=20161103, 
+		@active_end_date=99991231, 
+		@active_start_time=3000, 
+		@active_end_time=235959, 
+		@schedule_uid=N'72b9bc50-6873-4e57-882c-116992de373f'
+IF (@@ERROR <> 0 OR @ReturnCode <> 0) GOTO QuitWithRollback
+EXEC @ReturnCode = msdb.dbo.sp_add_jobserver @job_id = @jobId, @server_name = N'(local)'
+IF (@@ERROR <> 0 OR @ReturnCode <> 0) GOTO QuitWithRollback
+COMMIT TRANSACTION
+GOTO EndSave
+QuitWithRollback:
+    IF (@@TRANCOUNT > 0) ROLLBACK TRANSACTION
+EndSave:
+
+GO
+
+
+
+
+
+
+
+
