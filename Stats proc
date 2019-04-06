@@ -1,0 +1,231 @@
+USE [DBA_DB]
+GO
+
+/****** Object:  StoredProcedure [dbo].[usp_statistics_update]    Script Date: 14/02/2019 06:57:42 ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+
+
+
+
+-- =============================================
+-- Author:		Saurabh Verma 
+-- MOdified date: 14/02/2019 
+-- Description:	Update statistics for user databases 
+-- PARAMETERS : 
+-- @Timelimit : This parameter accepts integer value and in minutes same is applicable for @LATESTTIME , the value passed for both parameters @Timelimit(maxima)  and  @LATESTTIME (minima) will filter the  statistics to be update which fall under time frame decided by the parameters
+--
+--@LATESTTIME 
+--
+--@Switch_auto_stats : This parameter accepts integer values (0 or 1) , 0 : all the statistics will be updated , 1:all statistics except SQL server created statistics and user created statistics
+
+
+-- =============================================
+ALTER PROCEDURE [dbo].[usp_statistics_update] (@Timelimit INT = 0 , @LATESTTIME INT = 0, @Switch_auto_stats INT = 0   ) 
+	
+AS
+BEGIN
+
+IF NOT EXISTS (SELECT * FROM DBA_DB.sys.objects WHERE name = 'TBL_STATISTICS_UPDATE')
+	BEGIN
+		
+	
+CREATE TABLE [dbo].[TBL_STATISTICS_UPDATE](
+	[ID] [int] IDENTITY(1,1) NOT NULL,
+	[DatabaseName] [varchar](256) NULL,
+	[TableName] [varchar](256) NULL,
+	[IndexName] [varchar](256) NULL,
+	[StatisticsName] [varchar](256) NULL,
+	[statistics_update_date] [datetime] NULL,
+	[rowcnt] [int] NULL,
+	[rowmodctr] [int] NULL,
+	[Command] [varchar](1000) NULL,
+	[StartDateTime] [datetime] NULL,
+	[EndDateTime] [datetime] NULL,
+	[IsCompleted] [bit] NULL,
+	[GUID] [varchar](256) NULL,
+	[ReportDate] [smalldatetime] NULL,
+PRIMARY KEY CLUSTERED 
+(
+	[ID] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
+) ON [PRIMARY]
+
+	END
+
+
+--DECLARE @LATESTTIME INT = 2000
+--DECLARE @Timelimit INT = 0
+--DECLARE @Switch_auto_stats INT  = 0
+DECLARE @ID INT 
+DECLARE  @SQL nvarchar(max) 
+DECLARE  @cmd nvarchar(max) 
+DECLARE @ReportDate SMALLDATETIME
+DECLARE @GUID varchar(256) 
+SELECT @GUID = CONVERT(varchar(255), NEWID())
+
+--Purge data 2 month old 
+
+DELETE FROM [DBA_DB].[DBO].[TBL_STATISTICS_UPDATE] WHERE ReportDate <= CONVERT(VARCHAR(10),DATEADD(month,-2,GETDATE()),110); ; 
+
+-- If exists, delete today's data 
+
+--DELETE FROM [DBA_DB].[DBO].[TBL_STATISTICS_UPDATE] WHERE ReportDate = CONVERT(VARCHAR(10),GETDATE(),110) ; 
+ 
+-- Collect data in base table [DBA_DB].[DBO].[TBL_STATISTICS_UPDATE]
+
+SET @cmd = 'IF ''?'' NOT IN( SELECT NAME FROM SYS.DATABASES WHERE DATABASE_ID <=4 OR IS_READ_ONLY = 1 ) 
+USE ? ; 
+WITH CTE_MAIN
+AS
+(
+SELECT DB_NAME() AS DatabaseName ,s.name AS SchemaName, o.name AS TableName ,o.object_id as ObjectID,i.name AS IndexName,i.indid as IndexId,st.name as StatisticsName ,
+st.stats_id as StatsId , rowcnt , rowmodctr , 0 AS IsCompleted ,  CONVERT(VARCHAR(19),GETDATE(),120)  AS ReportDate 
+              FROM  sysindexes i INNER JOIN sys.objects o ON i.id = o.object_id 
+			  Inner join sys.schemas s ON o.schema_id = s.schema_id
+			  inner join sys.stats st ON st.object_id = o.object_id
+              WHERE  o.type = ''U''
+		   AND  rowcnt >1000 AND rowmodctr > 10  and i.name not like''sys%''and object_name(i.id)not like''sys%''
+)
+Select DatabaseName,TableName,IndexName,NULL as StatisticsName,STATS_DATE(ObjectID, IndexId) AS statistics_update_date,rowcnt,rowmodctr,
+''UPDATE STATISTICS ''+quotename(DB_NAME())+''.''+ quotename(SchemaName) +''.''+ quotename(TableName) + '' '' + quotename(IndexName) + '' WITH FULLSCAN;  '' AS Command
+,IsCompleted,'''+@GUID+''' AS GUID  , ReportDate from CTE_Main where IndexName=StatisticsName AND 	
+STATS_DATE(ObjectID, IndexId) BETWEEN DATEADD ( MINUTE ,-'+CAST(@LATESTTIME AS VARCHAR)+', getdate())  AND  DATEADD ( MINUTE ,-'+CAST(@TIMELIMIT AS VARCHAR)+', getdate())   
+UNION
+Select DatabaseName,TableName,NULL IndexName,StatisticsName,STATS_DATE(ObjectID, StatsId) AS statistics_update_date,rowcnt,rowmodctr,
+''UPDATE STATISTICS ''+quotename(DB_NAME())+''.''+ quotename(SchemaName) +''.''+ quotename(TableName) + '' '' + 
+quotename(StatisticsName) + '' WITH FULLSCAN;  '' AS Command,IsCompleted,'''+@GUID+'''AS GUID ,ReportDate from 
+CTE_Main where IndexName<>StatisticsName  AND  	
+STATS_DATE(ObjectID, StatsId)  BETWEEN DATEADD ( MINUTE ,-'+CAST(@LATESTTIME AS VARCHAR)+', getdate())  AND  DATEADD ( MINUTE , -'+CAST(@TIMELIMIT AS VARCHAR)+' , getdate()) ' 
+
+
+
+INSERT INTO  [DBA_DB].[DBO].[TBL_STATISTICS_UPDATE]
+
+(   [DatabaseName],[TableName], [IndexName], [StatisticsName], [statistics_update_date] ,[rowcnt]  ,[rowmodctr]  ,[Command]   ,[IsCompleted]  , [GUID], [ReportDate]  ) 
+
+Exec sp_msforeachdb @cmd 
+
+BEGIN 
+
+
+IF (@Switch_auto_stats = 0 ) 
+DECLARE TableCursor CURSOR FOR
+SELECT [ID], [Command] ,[GUID] 
+FROM [DBA_DB].[DBO].[TBL_STATISTICS_UPDATE]
+WHERE [GUID] = @GUID and IsCompleted = 0 ;
+
+ELSE 
+DECLARE TableCursor CURSOR FOR
+SELECT [ID], [Command] ,[GUID] 
+FROM [DBA_DB].[DBO].[TBL_STATISTICS_UPDATE]
+WHERE [GUID] = @GUID and IsCompleted = 0 AND StatisticsName IS NULL  ;  
+
+
+
+
+OPEN TableCursor  
+FETCH NEXT FROM TableCursor INTO @ID, @SQL, @GUID
+
+WHILE @@FETCH_STATUS = 0
+			BEGIN 
+			
+			UPDATE [DBA_DB].[DBO].[TBL_STATISTICS_UPDATE] SET [StartDateTime] = GETDATE() 
+			WHERE ID = @ID AND  [GUID] = @GUID
+
+			EXECUTE(@SQL) 
+
+			UPDATE [DBA_DB].[DBO].[TBL_STATISTICS_UPDATE] SET [EndDateTime] = GETDATE() , IsCompleted = 1
+			WHERE ID = @ID AND  [GUID] = @GUID
+
+			FETCH NEXT FROM TableCursor INTO @ID, @SQL, @GUID
+
+			END 
+
+		CLOSE TableCursor
+		DEALLOCATE TableCursor
+
+
+
+
+
+
+
+
+END 
+
+
+
+
+
+
+
+
+END
+
+
+
+
+
+
+GO
+
+
+---------------------CHange jobs 
+
+
+USE [msdb]
+GO
+EXEC msdb.dbo.sp_update_jobstep @job_name=N'IndexMaintenance - USER_DATABASES - without DBCC', @step_id=2 , 
+		@command=N'USE [DBA_DB]
+GO
+
+DECLARE	@return_value int
+
+IF(datename(dw,getdate()) = ''Sunday'') 
+
+
+EXEC	@return_value = [dbo].[usp_statistics_update]
+		@Timelimit = 0,
+		@LATESTTIME = 2880,
+		@Switch_auto_stats = 0
+
+
+ELSE 
+
+EXEC	@return_value = [dbo].[usp_statistics_update]
+		@Timelimit = 0,
+		@LATESTTIME = 1440,
+		@Switch_auto_stats = 1 
+
+SELECT	''Return Value'' = @return_value
+
+GO
+'
+GO
+
+
+USE [msdb]
+GO
+EXEC msdb.dbo.sp_update_jobstep @job_name=N'IndexMaintenance - USER_DATABASES - With - DBCC', @step_id=2 , 
+		@command=N'USE [DBA_DB]
+GO
+
+DECLARE	@return_value int
+
+
+
+EXEC	@return_value = [dbo].[usp_statistics_update]
+		@Timelimit = 0,
+		@LATESTTIME = 1440,
+		@Switch_auto_stats = 1 
+
+SELECT	''Return Value'' = @return_value
+
+GO'
+GO
